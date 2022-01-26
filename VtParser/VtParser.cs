@@ -1,30 +1,36 @@
 ﻿using System;
+using System.Text;
 
 namespace VtParser
 {
     public class VtParser
     {
-        private const int MAX_INTERMEDIATE_CHARS = 2;
+        //private const int MAX_INTERMEDIATE_CHARS = 256;
         private States state;
-        private byte[] intermediate_chars = new byte[MAX_INTERMEDIATE_CHARS + 1];
-        private int num_intermediate_chars;
-        private char ignore_flagged;
+        //private byte[] intermediate_chars = new byte[MAX_INTERMEDIATE_CHARS + 1];
+        //private int num_intermediate_chars;
+        private StringBuilder intermediate_chars = new StringBuilder();
+        //private char ignore_flagged;
         private int[] params_ = new int[16];
         private int num_params;
-        
-        public Action<Actions, char> Callback { get; set; }
+
+        public delegate void CallbackFn(VtParser parser, Actions action, char ch);
+
+        public CallbackFn Callback { get; set; }
+        public string IntermediateChars => intermediate_chars.ToString();
+        public Span<int> Parameters => params_.AsSpan(0, num_params);
 
         public VtParser()
         {
             state = States.VTPARSE_STATE_GROUND;
-            num_intermediate_chars = 0;
+            intermediate_chars.Clear();
             num_params = 0;
-            ignore_flagged = (char)0;
+            //ignore_flagged = (char)0;
         }
 
         public void PutChar(char c)
         {
-            byte stateChange = Tables.StateTable[(int)state - 1, c];
+            byte stateChange = Tables.StateTable[(int)state - 1, (byte) c];
             DoStateChange(stateChange, c);
         }
 
@@ -53,7 +59,7 @@ namespace VtParser
                 case Actions.VTPARSE_ACTION_UNHOOK:
                 case Actions.VTPARSE_ACTION_CSI_DISPATCH:
                 case Actions.VTPARSE_ACTION_ESC_DISPATCH:
-                    Callback?.Invoke(action, ch);
+                    Callback?.Invoke(this, action, ch);
                     break;
 
                 case Actions.VTPARSE_ACTION_IGNORE:
@@ -63,10 +69,11 @@ namespace VtParser
                 case Actions.VTPARSE_ACTION_COLLECT:
                     {
                         /* Append the character to the intermediate params */
-                        if (num_intermediate_chars + 1 > MAX_INTERMEDIATE_CHARS)
-                            ignore_flagged = (char) 1;
-                        else
-                            intermediate_chars[num_intermediate_chars++] = (byte) ch;
+                        //if (num_intermediate_chars + 1 > MAX_INTERMEDIATE_CHARS)
+                        //    ignore_flagged = (char) 1;
+                        //else
+                        //    intermediate_chars[num_intermediate_chars++] = (byte) ch;
+                        intermediate_chars.Append(ch);
 
                         break;
                     }
@@ -99,13 +106,13 @@ namespace VtParser
                     }
 
                 case Actions.VTPARSE_ACTION_CLEAR:
-                    num_intermediate_chars = 0;
+                    intermediate_chars.Clear();
                     num_params = 0;
-                    ignore_flagged = (char) 0;
+                    //ignore_flagged = (char) 0;
                     break;
 
                 default:
-                    Callback?.Invoke(Actions.VTPARSE_ACTION_ERROR, (char) 0);
+                    Callback?.Invoke(this, Actions.VTPARSE_ACTION_ERROR, (char) 0);
                     break;
             }
         }
@@ -114,8 +121,8 @@ namespace VtParser
         {
             /* A state change is an action and/or a new state to transition to. */
 
-            States new_state = (States)(change & 0x0F);
-            Actions action = (Actions)(change >> 4);
+            States new_state = (States)(change >> 4);
+            Actions action = (Actions)(change & 0x0F);
 
 
             if (new_state != States.UNDEFINED)
